@@ -143,10 +143,10 @@ def eucl_dist_output_shape(shapes):
 
 
 digit_input = keras.layers.Input(shape=input_shape)
-x = keras.layers.Conv2D(filters=6,kernel_size=(5, 5),activation='relu')(digit_input)
-x = keras.layers.Conv2D(filters=12,kernel_size=(3, 3),activation='relu')(x)
-x = keras.layers.MaxPooling2D(pool_size=(2, 2))(x)
-x = keras.layers.Dropout(0.1)(x)
+x = keras.layers.Conv2D(32,(5, 5))(digit_input)
+x = keras.layers.Conv2D(64,(3, 3))(x)
+x = keras.layers.MaxPooling2D((2, 2))(x)
+x = keras.layers.Dropout(0.25)(x)
 out =keras.layers.Flatten()(x)
 
 vision_model = keras.models.Model(digit_input, out)
@@ -161,11 +161,13 @@ input_b = keras.layers.Input(shape=input_shape, name = 'input_b')
 processed_a = vision_model(input_a)
 processed_b = vision_model(input_b)
 
-distance = keras.layers.Lambda(euclidean_distance, output_shape=eucl_dist_output_shape)([processed_a, processed_b])
+#distance = keras.layers.Lambda(euclidean_distance, output_shape=eucl_dist_output_shape)([processed_a, processed_b])
 
-#concatenated = keras.layers.concatenate([processed_a, processed_b])
-#out = keras.layers.Dense(1, activation='sigmoid')(concatenated)
-model = keras.models.Model([input_a, input_b],distance)
+concatenated = keras.layers.concatenate([processed_a, processed_b])
+out1 = keras.layers.Dense(128, activation='sigmoid')(concatenated)
+out1 = keras.layers.Dropout(0.5)(out1)
+out = keras.layers.Dense(1, activation='sigmoid')(out1)
+model = keras.models.Model([input_a, input_b],out)
 
 
 def contrastive_loss(y_true, y_pred):
@@ -189,11 +191,13 @@ def compute_accuracy(predictions, labels):
     return labels[predictions.ravel() < 0.5].mean()
 
 rms = keras.optimizers.RMSprop()
-model.compile(loss=contrastive_loss, optimizer=rms,metrics=['acc'])
+model.compile(loss=contrastive_loss, optimizer=rms,metrics=['accuracy'])
 AAA=model.fit([tr_pairs[:, 0], tr_pairs[:, 1]], tr_y,
               epochs = 10,
               validation_data=([te_pairs[:, 0], te_pairs[:, 1]], te_y),
               batch_size=128)
+
+
 
 acc = AAA.history['acc']
 val_acc = AAA.history['val_acc']
