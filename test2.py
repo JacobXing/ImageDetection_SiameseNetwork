@@ -44,6 +44,8 @@ for j in [0,1,8,9]:
 
 x_train1=np.delete(x_train, list1, 0)
 y_train1=np.delete(y_train,list1,0)
+x_test=np.delete(x_test,list1,0)
+y_test=np.delete(y_test,list1,0)
 
 img_rows, img_cols = x_train.shape[1:3]
 X_train =  x_train1.reshape(x_train1.shape[0], img_rows, img_cols, 1) #将图片向量化
@@ -145,6 +147,7 @@ def eucl_dist_output_shape(shapes):
 digit_input = keras.layers.Input(shape=input_shape)
 x = keras.layers.Conv2D(32,(5, 5))(digit_input)
 x = keras.layers.Conv2D(64,(3, 3))(x)
+#x = keras.layers.Conv2D(12,(3, 3))(x)
 x = keras.layers.MaxPooling2D((2, 2))(x)
 x = keras.layers.Dropout(0.25)(x)
 out =keras.layers.Flatten()(x)
@@ -163,9 +166,11 @@ processed_b = vision_model(input_b)
 
 #distance = keras.layers.Lambda(euclidean_distance, output_shape=eucl_dist_output_shape)([processed_a, processed_b])
 
-concatenated = keras.layers.concatenate([processed_a, processed_b])
-out1 = keras.layers.Dense(128, activation='sigmoid')(concatenated)
+concatenated = keras.layers.concatenate([processed_a, processed_b], axis=-1)
+out1 = keras.layers.Dense(128, activation='relu')(concatenated)
 out1 = keras.layers.Dropout(0.5)(out1)
+out1 = keras.layers.Dense(64, activation='relu')(out1)
+out1 = keras.layers.Dropout(0.25)(out1)
 out = keras.layers.Dense(1, activation='sigmoid')(out1)
 model = keras.models.Model([input_a, input_b],out)
 
@@ -182,8 +187,8 @@ def contrastive_loss(y_true, y_pred):
 digit_indices1 = [np.where(y_train1 == i)[0] for i in [2,3,4,5,6,7]]
 tr_pairs, tr_y = create_pairs1(x_train1, digit_indices1)
 #tr_y=np.delete(tr_y,[0,1,8,9],0)
-digit_indices2 = [np.where(y_test == i)[0] for i in range(10)]
-te_pairs, te_y = create_pairs(x_test, digit_indices2)
+digit_indices2 = [np.where(y_test == i)[0] for i in [2,3,4,5,6,7]]
+te_pairs, te_y = create_pairs1(x_test, digit_indices2)
 
 def compute_accuracy(predictions, labels):
     '''Compute classification accuracy with a fixed threshold on distances.
@@ -210,11 +215,23 @@ plt.title('Training and validation accuracy')
 plt.legend()
 plt.show()
 
+
+
+
+
+
+
+
 # compute final accuracy on training and test sets
 pred = model.predict([tr_pairs[:, 0], tr_pairs[:, 1]])
 tr_acc = compute_accuracy(pred, tr_y)
 pred = model.predict([te_pairs[:, 0], te_pairs[:, 1]])
 te_acc = compute_accuracy(pred, te_y)
+
+
+from sklearn.metrics import confusion_matrix
+#cm = confusion_matrix(pred, te_y)
+
 
 print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
 print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
