@@ -230,7 +230,7 @@ te_acc = compute_accuracy(pred, te_y)
 
 
 from sklearn.metrics import confusion_matrix
-#cm = confusion_matrix(pred, te_y)
+cm = confusion_matrix(pred.round(), te_y.round())
 
 
 print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
