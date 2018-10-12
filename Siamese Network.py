@@ -223,6 +223,12 @@ plt.title('Training and validation accuracy')
 plt.legend()
 plt.show()
 
+plt.plot(epochs, loss, '-', color='orange', label='training loss')
+plt.plot(epochs, val_loss, '-', color='blue', label='validation loss')
+plt.title('Training and validation error VS time')
+plt.legend()
+plt.show()
+
 eval_table = {}
 y_pred = model.predict([X_train[:val_idx, 0], X_train[:val_idx, 1]])
 train_acc = compute_accuracy(y_train[:val_idx], y_pred)
