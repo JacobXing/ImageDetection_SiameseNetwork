@@ -132,12 +132,12 @@ def contrastive_loss(y_true, y_pred):
 def compute_accuracy(predictions, labels, indices=True):
     '''Compute classification accuracy with a fixed threshold on distances.
     '''
-    return labels[predictions.ravel() < 0.5].mean()
+    return labels[predictions.ravel() < threshould].mean()
 
 def accuracy(y_true, y_pred):
     '''Compute classification accuracy with a fixed threshold on distances.
     '''
-    return K.mean(K.equal(y_true, K.cast(y_pred < 0.5, y_true.dtype)))
+    return K.mean(K.equal(y_true, K.cast(y_pred < threshould, y_true.dtype)))
 def evaluate_accuracy(model, x, digits1, num_pairs, digits2 = None):
     
     X_eval, y_eval = create_pairs(x, digits1, num_pairs, digits2)
@@ -154,7 +154,7 @@ def evaluation_Statistic_Result(model, x, digits1, num_pairs, digits2 = None):
     y_pred = model.predict(x = [X_eval[:, 0], X_eval[:, 1]])
 
     for i in range(len(y_pred)):
-        if y_pred[i] < 0.5:
+        if y_pred[i] < threshould:
             y_pred[i] = 1
         else:
             y_pred[i] = 0
