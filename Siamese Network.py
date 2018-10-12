@@ -38,7 +38,6 @@ epochs = 20
 normalize = True
 test_only_digits = [0,1,8,9]
 training_digits = [cls for cls in range(num_classes) if cls not in test_only_digits]
-
 margin = 1
 threshould = margin/2
 
@@ -73,8 +72,6 @@ def create_pairs(x, digits, num_pairs, digits2 = None):
                         return np.array(pairs).astype('float32')/255, np.array(labels)
                     else:
                         return np.array(pairs).astype('float32'), np.array(labels)
-
-                
     else:
         
         while True: 
@@ -151,6 +148,44 @@ def evaluate_accuracy(model, x, digits1, num_pairs, digits2 = None):
     else:
         return {'[%s]x[%s]'% (digits1, digits2): eval_acc}
 
+def evaluation_Statistic_Result(model, x, digits1, num_pairs, digits2 = None):
+# compute final accuracy on training and test sets
+    X_eval, y_eval = create_pairs(x, digits1, num_pairs, digits2)
+    y_pred = model.predict(x = [X_eval[:, 0], X_eval[:, 1]])
+
+    for i in range(len(y_pred)):
+        if y_pred[i] < 0.5:
+            y_pred[i] = 1
+        else:
+            y_pred[i] = 0
+    labels = ['different image', 'same image']
+    if digits2 is None:
+        print('\n[%s]x[%s]:'% (digits1, digits1))
+        from sklearn.metrics import confusion_matrix
+        cm = confusion_matrix(y_pred, y_eval)
+        import pandas as pd
+        cm = pd.DataFrame(cm)
+        cm.columns = labels
+        cm.index = labels
+        print('\nConfusion_matrix:')
+        print(cm)
+        from sklearn.metrics import classification_report
+        print('\nClassification report:')
+        print(classification_report(y_eval, y_pred, target_names=labels)) 
+    else:
+        print('\n[%s]x[%s]:'% (digits1, digits2))
+        from sklearn.metrics import confusion_matrix
+        cm = confusion_matrix(y_pred, y_eval)
+        import pandas as pd
+        cm = pd.DataFrame(cm)
+        cm.columns = labels
+        cm.index = labels
+        print('\nConfusion_matrix:')
+        print(cm)
+        from sklearn.metrics import classification_report
+        print('\nClassification report:')
+        print(classification_report(y_eval, y_pred, target_names=labels))
+
 (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
 
 X = np.expand_dims(np.concatenate((x_train,x_test), axis= 0),1)
@@ -200,8 +235,6 @@ import pandas as pd
 print(pd.DataFrame([eval_table]).T)
 
 
-
-
 # compute final accuracy on training and test sets
 y_pred = model.predict([X_train[:val_idx, 0], X_train[:val_idx, 1]])
 tr_acc = compute_accuracy(y_train[:val_idx], y_pred)
@@ -210,39 +243,7 @@ te_acc = compute_accuracy(y_train[val_idx:], y_pred)
 
 print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
 print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
-
-
-def evaluation_result(tr_image1, tr_image2, te_image1, te_image2, tr_y, te_y, threshould):
-# compute final accuracy on training and test sets
-    pred = model.predict([tr_image1, tr_image2])
-    tr_acc = compute_accuracy(pred, tr_y)
-    pred1 = model.predict([te_image1, te_image2])
-    te_acc = compute_accuracy(pred1, te_y)
-
-
-
-    print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
-    print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
-#-----------------------------------------------------------------------------
-    for i in range(len(pred1)):
-        if pred1[i] < threshould:
-            pred1[i] = 1
-        else:
-            pred1[i] = 0
-
-    labels = ['same image', 'different image']
-    from sklearn.metrics import confusion_matrix
-    cm = confusion_matrix(pred1, te_y)
-    import pandas as pd
-    cm = pd.DataFrame(cm)
-    cm.columns = labels
-    cm.index = labels
-    print('\nConfusion_matrix:')
-    print(cm)
-
-
-    from sklearn.metrics import classification_report
-    print('\nClassification report:')
-    print(classification_report(te_y, pred1, target_names=labels))
     
-#evaluation_result(tr_image1, tr_image2, te_image1, te_image2, tr_y, te_y, threshould)
+evaluation_Statistic_Result(model, X, training_digits, num_test)
+evaluation_Statistic_Result(model, X, training_digits, num_test, test_only_digits)
+evaluation_Statistic_Result(model, X, test_only_digits, num_test)
