@@ -57,6 +57,8 @@ X_test = X_test.astype('float32')
 x_train1=X_train/255 # 归一化
 x_test=X_test/255
 
+margin = 1
+threshould = margin/2
 
 def create_pairs(x, digit_indices):
     '''Positive and negative pair creation.
@@ -107,82 +109,53 @@ def create_pairs1(x, digit_indices):
             labels += [1, 0]
     return np.array(pairs), np.array(labels)
 
-def create_base_network(input_dim):
-    '''Base network to be shared (eq. to feature extraction).
-    '''
-    seq = keras.Sequential()
-    seq.add(keras.layers.Dense(128, input_shape=(input_dim,), activation='relu'))
-    seq.add(keras.layers.Dropout(0.1))
-    seq.add(keras.layers.Dense(128, activation='relu'))
-    seq.add(keras.layers.Dropout(0.1))
-    seq.add(keras.layers.Dense(128, activation='relu'))
-    return seq
+def create_siameseNetwork(input_shape):
+    digit_input = keras.layers.Input(shape=input_shape)
+    x = keras.layers.Conv2D(32,(5, 5))(digit_input)
+    x = keras.layers.Conv2D(64,(3, 3))(x)
+    x = keras.layers.MaxPooling2D((2, 2))(x)
+    x = keras.layers.Dropout(0.25)(x)
+    out =keras.layers.Flatten()(x)
 
-def create_CNN_network(input_dim):
-    seq=keras.Sequential()
-    
-    seq.add(keras.layers.Conv1D(input_shape=(input_dim,),filters=6,kernel_size=(5,5),activation='relu'))
-    seq.add(keras.layers.Conv2D(filters=12,kernel_size=(3,3),activation='relu'))
-    seq.add(keras.layers.MaxPooling2D(poolling_size=(3,3)))
-    seq.add(keras.layers.Flatten())
+    vision_model = keras.models.Model(digit_input, out)
 
-    seq.add(keras.layers.Dropout(0.1))
-    seq.add(keras.layers.Dense(128, activation='relu'))
-    seq.add(keras.layers.Dropout(0.1))
-    seq.add(keras.layers.Dense(128, activation='relu'))
-    return seq
-
-
-def euclidean_distance(vects):
-    x, y = vects
-    return K.sqrt(K.sum(K.square(x - y), axis=1, keepdims=True))
-
-def eucl_dist_output_shape(shapes):
-    shape1, shape2 = shapes
-    return (shape1[0], 1)
-
-
-
-
-digit_input = keras.layers.Input(shape=input_shape)
-x = keras.layers.Conv2D(32,(5, 5))(digit_input)
-x = keras.layers.Conv2D(64,(3, 3))(x)
-#x = keras.layers.Conv2D(12,(3, 3))(x)
-x = keras.layers.MaxPooling2D((2, 2))(x)
-x = keras.layers.Dropout(0.25)(x)
-out =keras.layers.Flatten()(x)
-
-vision_model = keras.models.Model(digit_input, out)
-#base_network = create_CNN_network(784)
-
-input_a = keras.layers.Input(shape=input_shape, name = 'input_a')
-input_b = keras.layers.Input(shape=input_shape, name = 'input_b')
+    input_a = keras.layers.Input(shape=input_shape, name = 'input_a')
+    input_b = keras.layers.Input(shape=input_shape, name = 'input_b')
 
 # because we re-use the same instance `base_network`,
 # the weights of the network
 # will be shared across the two branches
-processed_a = vision_model(input_a)
-processed_b = vision_model(input_b)
+    processed_a = vision_model(input_a)
+    processed_b = vision_model(input_b)
 
-#distance = keras.layers.Lambda(euclidean_distance, output_shape=eucl_dist_output_shape)([processed_a, processed_b])
-
-concatenated = keras.layers.concatenate([processed_a, processed_b], axis=-1)
-out1 = keras.layers.Dense(128, activation='relu')(concatenated)
-out1 = keras.layers.Dropout(0.5)(out1)
-out1 = keras.layers.Dense(64, activation='relu')(out1)
-out1 = keras.layers.Dropout(0.25)(out1)
-out = keras.layers.Dense(1, activation='sigmoid')(out1)
-model = keras.models.Model([input_a, input_b],out)
-
+    concatenated = keras.layers.concatenate([processed_a, processed_b], axis=-1)
+    out1 = keras.layers.Dense(128, activation='relu')(concatenated)
+    out1 = keras.layers.Dropout(0.5)(out1)
+    out1 = keras.layers.Dense(64, activation='relu')(out1)
+    out1 = keras.layers.Dropout(0.25)(out1)
+    out = keras.layers.Dense(1, activation='sigmoid')(out1)
+    model = keras.models.Model([input_a, input_b],out)
+    return model
 
 def contrastive_loss(y_true, y_pred):
     '''Contrastive loss from Hadsell-et-al.'06
-    http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
     '''
-    margin = 1
-    
-    return K.mean(y_true * K.square(y_pred) + (1 - y_true) * K.square(K.maximum(margin - y_pred, 0)))
+    tmp= y_true *tf.square(y_pred)
+    tmp2 = (1-y_true) *tf.square(tf.maximum((1 - y_pred),0))
+    return (tf.reduce_sum(tmp/2) +tf.reduce_sum(tmp2/2))
 
+
+def compute_accuracy(predictions, labels, indices=True):
+    '''Compute classification accuracy with a fixed threshold on distances.
+    '''
+    return labels[predictions.ravel() < 0.5].mean()
+
+def accuracy(y_true, y_pred):
+    '''Compute classification accuracy with a fixed threshold on distances.
+    '''
+    return K.mean(K.equal(y_true, K.cast(y_pred < 0.5, y_true.dtype)))
+
+model = create_siameseNetwork(input_shape)
 
 digit_indices1 = [np.where(y_train1 == i)[0] for i in [2,3,4,5,6,7]]
 tr_pairs, tr_y = create_pairs1(x_train1, digit_indices1)
@@ -190,13 +163,9 @@ tr_pairs, tr_y = create_pairs1(x_train1, digit_indices1)
 digit_indices2 = [np.where(y_test == i)[0] for i in [2,3,4,5,6,7]]
 te_pairs, te_y = create_pairs1(x_test, digit_indices2)
 
-def compute_accuracy(predictions, labels):
-    '''Compute classification accuracy with a fixed threshold on distances.
-    '''
-    return labels[predictions.ravel() < 0.5].mean()
 
 rms = keras.optimizers.RMSprop()
-model.compile(loss=contrastive_loss, optimizer=rms,metrics=['accuracy'])
+model.compile(loss=contrastive_loss, optimizer=rms,metrics=[accuracy])
 AAA=model.fit([tr_pairs[:, 0], tr_pairs[:, 1]], tr_y,
               epochs = 10,
               validation_data=([te_pairs[:, 0], te_pairs[:, 1]], te_y),
@@ -204,8 +173,8 @@ AAA=model.fit([tr_pairs[:, 0], tr_pairs[:, 1]], tr_y,
 
 
 
-acc = AAA.history['acc']
-val_acc = AAA.history['val_acc']
+acc = AAA.history['accuracy']
+val_acc = AAA.history['val_accuracy']
 loss = AAA.history['loss']
 val_loss = AAA.history['val_loss']
 epochs = range(len(acc))
@@ -215,23 +184,41 @@ plt.title('Training and validation accuracy')
 plt.legend()
 plt.show()
 
-
-
-
-
-
-
-
+tr_image1 = tr_pairs[:, 0]
+tr_image2 = tr_pairs[:, 1]
+te_image1 = te_pairs[:, 0]
+te_image2 = te_pairs[:, 1]
+def evaluation_result(tr_image1, tr_image2, te_image1, te_image2, tr_y, te_y, threshould):
 # compute final accuracy on training and test sets
-pred = model.predict([tr_pairs[:, 0], tr_pairs[:, 1]])
-tr_acc = compute_accuracy(pred, tr_y)
-pred = model.predict([te_pairs[:, 0], te_pairs[:, 1]])
-te_acc = compute_accuracy(pred, te_y)
+    pred = model.predict([tr_image1, tr_image2])
+    tr_acc = compute_accuracy(pred, tr_y)
+    pred1 = model.predict([te_image1, te_image2])
+    te_acc = compute_accuracy(pred1, te_y)
 
 
-from sklearn.metrics import confusion_matrix
-cm = confusion_matrix(pred.round(), te_y.round())
+
+    print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
+    print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
+#-----------------------------------------------------------------------------
+    for i in range(len(pred1)):
+        if pred1[i] < threshould:
+            pred1[i] = 1
+        else:
+            pred1[i] = 0
+
+    labels = ['same image', 'different image']
+    from sklearn.metrics import confusion_matrix
+    cm = confusion_matrix(pred1, te_y)
+    import pandas as pd
+    cm = pd.DataFrame(cm)
+    cm.columns = labels
+    cm.index = labels
+    print('\nConfusion_matrix:')
+    print(cm)
 
 
-print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
-print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
+    from sklearn.metrics import classification_report
+    print('\nClassification report:')
+    print(classification_report(te_y, pred1, target_names=labels))
+    
+evaluation_result(tr_image1, tr_image2, te_image1, te_image2, tr_y, te_y, threshould)
