@@ -24,95 +24,82 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from keras import backend as K
-#from tensorflow.contrib import keras 
 
 import matplotlib.pyplot as plt
 
 (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
-    
-# INSERT YOUR CODE HERE
-#np.savez('D:\\mnist_dataset.npz',x_train,y_train,x_test,y_test)
 
-list1=[]
-for j in [0,1,8,9]:
-    location=0
-    for i in y_train:
-        if i==j:
-            list1.append(location)
-        location=location+1
-
-
-x_train1=np.delete(x_train, list1, 0)
-y_train1=np.delete(y_train,list1,0)
-x_test=np.delete(x_test,list1,0)
-y_test=np.delete(y_test,list1,0)
-
-img_rows, img_cols = x_train.shape[1:3]
-X_train =  x_train1.reshape(x_train1.shape[0], img_rows, img_cols, 1) #将图片向量化
-X_test = x_test.reshape(x_test.shape[0], img_rows, img_cols, 1)
-input_shape = (img_rows, img_cols, 1)
-
-X_train = X_train.astype('float32')
-X_test = X_test.astype('float32')
-x_train1=X_train/255 # 归一化
-x_test=X_test/255
+num_classes = 10
+num_train = 50000
+num_test = 10000
+validation_split = 0.1
+val_idx = -10000
+epochs = 20
+normalize = True
+test_only_digits = [0,1,8,9]
+training_digits = [cls for cls in range(num_classes) if cls not in test_only_digits]
 
 margin = 1
 threshould = margin/2
 
-def create_pairs(x, digit_indices):
-    '''Positive and negative pair creation.
-    Alternates between positive and negative pairs.
-    '''
-    pairs = [] #一会儿一对对的样本要放在这里
+def create_pairs(x, digits, num_pairs, digits2 = None):
+    
+    pairs = []
     labels = []
-    n = min([len(digit_indices[d]) for d in range(10)])-1
-    for d in range(10):
-        #对第d类抽取正负样本
-        for i in range(n):
-            # 遍历d类的样本，取临近的两个样本为正样本对
-            z1, z2 = digit_indices[d][i], digit_indices[d][i+1]
-            pairs += [[x[z1], x[z2]]]
-            # randrange会产生1~9之间的随机数，含1和9
-            inc = np.random.randint(1, 10)
-            # (d+inc)%10一定不是d，用来保证负样本对的图片绝不会来自同一个类
-            dn = (d + inc) % 10
-            # 在d类和dn类中分别取i样本构成负样本对
-            z1, z2 = digit_indices[d][i], digit_indices[dn][i]
-            pairs += [[x[z1], x[z2]]]
-            # 添加正负样本标签
-            labels += [1, 0]
-    return np.array(pairs), np.array(labels)
+            
+    if digits2 is None:
+            
+        while True: # Change to while True? 
+            
+            for d in digits:
+                
+                P1, P2 = np.random.choice(digits_idx[d],2)
+                pairs += [[x[P1], x[P2]]]
 
-def create_pairs1(x, digit_indices):
-    '''Positive and negative pair creation.
-    Alternates between positive and negative pairs.
-    '''
-    pairs = [] #一会儿一对对的样本要放在这里
-    labels = []
-    n = min([len(digit_indices[d]) for d in range(0,5)])-1
-    print(n)
-    for d in range(0,5):
-        #对第d类抽取正负样本
-        for i in range(n):
-            # 遍历d类的样本，取临近的两个样本为正样本对
-            z1, z2 = digit_indices[d][i], digit_indices[d][i+1]
-            pairs += [[x[z1], x[z2]]]
-            # randrange会产生1~9之间的随机数，含1和9
-            inc = np.random.randint(2, 7)
-            # (d+inc)%10一定不是d，用来保证负样本对的图片绝不会来自同一个类
-            dn = (d + inc) % 6
-            # 在d类和dn类中分别取i样本构成负样本对
-            z1, z2 = digit_indices[d][i], digit_indices[dn][i]
-            pairs += [[x[z1], x[z2]]]
-            # 添加正负样本标签
-            labels += [1, 0]
-    return np.array(pairs), np.array(labels)
+                assert y[P1] in digits and y[P2] in digits
+                assert y[P1] == y[P2], 'Positive pairs should have the same labels'
+
+                N1 = np.random.choice(digits_idx[d])
+                N2 = np.random.choice(digits_idx[np.random.choice([ di for di in digits if di != d])])
+                pairs += [[x[N1], x[N2]]]
+
+                assert y[N1] in digits and y[N2] in digits
+                assert y[N1] != y[N2], 'Negative pairs should have different labels'
+
+                labels += [1, 0]
+                
+                if len(pairs) >= num_pairs:
+                    if normalize:
+                        return np.array(pairs).astype('float32')/255, np.array(labels)
+                    else:
+                        return np.array(pairs).astype('float32'), np.array(labels)
+
+                
+    else:
+        
+        while True: 
+
+            d1 = np.random.choice(digits)
+            d2 = np.random.choice(digits2)
+
+            P1 = np.random.choice(digits_idx[d1])
+            P2 = np.random.choice(digits_idx[d2])
+
+            pairs += [[x[P1], x[P2]]]
+
+            labels += [d1 == d2]
+
+            if len(pairs) >= num_pairs:
+                
+                if normalize:
+                    return np.array(pairs).astype('float32')/255, np.array(labels)
+                else:
+                    return np.array(pairs).astype('float32'), np.byte(np.array(labels))
 
 def create_siameseNetwork(input_shape):
     digit_input = keras.layers.Input(shape=input_shape)
-    x = keras.layers.Conv2D(32,(5, 5))(digit_input)
-    x = keras.layers.Conv2D(64,(3, 3))(x)
+    x = keras.layers.Conv2D(32,(5, 5),activation='relu')(digit_input)
+    x = keras.layers.Conv2D(64,(3, 3),activation='relu')(x)
     x = keras.layers.MaxPooling2D((2, 2))(x)
     x = keras.layers.Dropout(0.25)(x)
     out =keras.layers.Flatten()(x)
@@ -154,22 +141,39 @@ def accuracy(y_true, y_pred):
     '''Compute classification accuracy with a fixed threshold on distances.
     '''
     return K.mean(K.equal(y_true, K.cast(y_pred < 0.5, y_true.dtype)))
+def evaluate_accuracy(model, x, digits1, num_pairs, digits2 = None):
+    
+    X_eval, y_eval = create_pairs(x, digits1, num_pairs, digits2)
+    y_pred = model.predict(x = [X_eval[:, 0], X_eval[:, 1]])
+    eval_acc = compute_accuracy(y_eval, y_pred)
+    if digits2 is None:
+        return {'[%s]x[%s]'% (digits1, digits1): eval_acc}
+    else:
+        return {'[%s]x[%s]'% (digits1, digits2): eval_acc}
+
+(x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+
+X = np.expand_dims(np.concatenate((x_train,x_test), axis= 0),1)
+y = np.concatenate((y_train,y_test), axis= 0)
+img_rows, img_cols = X.shape[2:]
+X =  X.reshape(X.shape[0], img_rows, img_cols, 1) 
+
+digits_idx = [np.where(y == i)[0] for i in range(num_classes)]
+
+X_train, y_train = create_pairs(X, training_digits, num_train)
+
+input_shape = X_train.shape[2:]
+if val_idx is None:
+    val_idx = -(validation_split) * len(X_train)
+
 
 model = create_siameseNetwork(input_shape)
-
-digit_indices1 = [np.where(y_train1 == i)[0] for i in [2,3,4,5,6,7]]
-tr_pairs, tr_y = create_pairs1(x_train1, digit_indices1)
-#tr_y=np.delete(tr_y,[0,1,8,9],0)
-digit_indices2 = [np.where(y_test == i)[0] for i in [2,3,4,5,6,7]]
-te_pairs, te_y = create_pairs1(x_test, digit_indices2)
-
-
 rms = keras.optimizers.RMSprop()
-model.compile(loss=contrastive_loss, optimizer=rms,metrics=[accuracy])
-AAA=model.fit([tr_pairs[:, 0], tr_pairs[:, 1]], tr_y,
-              epochs = 10,
-              validation_data=([te_pairs[:, 0], te_pairs[:, 1]], te_y),
-              batch_size=128)
+model.compile(loss=contrastive_loss, optimizer=rms, metrics=[accuracy])
+AAA = model.fit([X_train[:val_idx, 0], X_train[:val_idx, 1]], y_train[:val_idx],
+                batch_size=128,
+                validation_data=([X_train[val_idx:, 0], X_train[val_idx:, 1]], y_train[val_idx:]),
+                epochs=epochs)
 
 
 
@@ -184,10 +188,30 @@ plt.title('Training and validation accuracy')
 plt.legend()
 plt.show()
 
-tr_image1 = tr_pairs[:, 0]
-tr_image2 = tr_pairs[:, 1]
-te_image1 = te_pairs[:, 0]
-te_image2 = te_pairs[:, 1]
+eval_table = {}
+y_pred = model.predict([X_train[:val_idx, 0], X_train[:val_idx, 1]])
+train_acc = compute_accuracy(y_train[:val_idx], y_pred)
+eval_table.update({'Train': train_acc})
+#eval_table.update(evaluate_accuracy(model, X, range(num_classes), num_test))
+eval_table.update(evaluate_accuracy(model, X, training_digits, num_test))
+eval_table.update(evaluate_accuracy(model, X, training_digits, num_test, test_only_digits))
+eval_table.update(evaluate_accuracy(model, X, test_only_digits, num_test))
+import pandas as pd
+print(pd.DataFrame([eval_table]).T)
+
+
+
+
+# compute final accuracy on training and test sets
+y_pred = model.predict([X_train[:val_idx, 0], X_train[:val_idx, 1]])
+tr_acc = compute_accuracy(y_train[:val_idx], y_pred)
+y_pred = model.predict([X_train[val_idx:, 0], X_train[val_idx:, 1]])
+te_acc = compute_accuracy(y_train[val_idx:], y_pred)
+
+print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
+print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
+
+
 def evaluation_result(tr_image1, tr_image2, te_image1, te_image2, tr_y, te_y, threshould):
 # compute final accuracy on training and test sets
     pred = model.predict([tr_image1, tr_image2])
@@ -221,4 +245,4 @@ def evaluation_result(tr_image1, tr_image2, te_image1, te_image2, tr_y, te_y, th
     print('\nClassification report:')
     print(classification_report(te_y, pred1, target_names=labels))
     
-evaluation_result(tr_image1, tr_image2, te_image1, te_image2, tr_y, te_y, threshould)
+#evaluation_result(tr_image1, tr_image2, te_image1, te_image2, tr_y, te_y, threshould)
