@@ -20,28 +20,13 @@ Created on Fri Sep 28 12:24:03 2018
 """
 
 import numpy as np
-
+import pandas as pd
 import tensorflow as tf
 from tensorflow import keras
 from keras import backend as K
-
 import matplotlib.pyplot as plt
 
-(x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
-
-num_classes = 10
-num_train = 50000
-num_test = 10000
-validation_split = 0.1
-val_idx = -10000
-epochs = 20
-normalize = True
-test_only_digits = [0,1,8,9]
-training_digits = [cls for cls in range(num_classes) if cls not in test_only_digits]
-margin = 1
-threshould = margin/2
-
-def create_pairs(x, digits, num_pairs, digits2 = None):
+def create_pairs(x, digits, num_pairs, digits_idx, y, digits2 = None):
     
     pairs = []
     labels = []
@@ -138,9 +123,9 @@ def accuracy(y_true, y_pred):
     '''Compute classification accuracy with a fixed threshold on distances.
     '''
     return K.mean(K.equal(y_true, K.cast(y_pred < threshould, y_true.dtype)))
-def evaluate_accuracy(model, x, digits1, num_pairs, digits2 = None):
+def evaluate_accuracy(model, x, digits1, num_pairs, digits_idx, y, digits2 = None):
     
-    X_eval, y_eval = create_pairs(x, digits1, num_pairs, digits2)
+    X_eval, y_eval = create_pairs(x, digits1, num_pairs, digits_idx, y, digits2)
     y_pred = model.predict(x = [X_eval[:, 0], X_eval[:, 1]])
     eval_acc = compute_accuracy(y_eval, y_pred)
     if digits2 is None:
@@ -148,9 +133,9 @@ def evaluate_accuracy(model, x, digits1, num_pairs, digits2 = None):
     else:
         return {'[%s]x[%s]'% (digits1, digits2): eval_acc}
 
-def evaluation_Statistic_Result(model, x, digits1, num_pairs, digits2 = None):
+def evaluation_Statistic_Result(model, x, digits1, num_pairs, digits_idx, y,digits2 = None):
 # compute final accuracy on training and test sets
-    X_eval, y_eval = create_pairs(x, digits1, num_pairs, digits2)
+    X_eval, y_eval = create_pairs(x, digits1, num_pairs, digits_idx, y, digits2)
     y_pred = model.predict(x = [X_eval[:, 0], X_eval[:, 1]])
 
     for i in range(len(y_pred)):
@@ -185,73 +170,87 @@ def evaluation_Statistic_Result(model, x, digits1, num_pairs, digits2 = None):
         from sklearn.metrics import classification_report
         print('\nClassification report:')
         print(classification_report(y_eval, y_pred, target_names=labels))
+        
+def main(val_idx, epochs):
+    (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
 
-(x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+    X = np.expand_dims(np.concatenate((x_train,x_test), axis= 0),1)
+    y = np.concatenate((y_train,y_test), axis= 0)
+    img_rows, img_cols = X.shape[2:]
+    X =  X.reshape(X.shape[0], img_rows, img_cols, 1) 
 
-X = np.expand_dims(np.concatenate((x_train,x_test), axis= 0),1)
-y = np.concatenate((y_train,y_test), axis= 0)
-img_rows, img_cols = X.shape[2:]
-X =  X.reshape(X.shape[0], img_rows, img_cols, 1) 
+    digits_idx = [np.where(y == i)[0] for i in range(num_classes)]
 
-digits_idx = [np.where(y == i)[0] for i in range(num_classes)]
+    X_train, y_train = create_pairs(X, training_digits, num_train, digits_idx, y)
 
-X_train, y_train = create_pairs(X, training_digits, num_train)
-
-input_shape = X_train.shape[2:]
-if val_idx is None:
-    val_idx = -(validation_split) * len(X_train)
-
-
-model = create_siameseNetwork(input_shape)
-rms = keras.optimizers.RMSprop()
-model.compile(loss=contrastive_loss, optimizer=rms, metrics=[accuracy])
-AAA = model.fit([X_train[:val_idx, 0], X_train[:val_idx, 1]], y_train[:val_idx],
-                batch_size=128,
-                validation_data=([X_train[val_idx:, 0], X_train[val_idx:, 1]], y_train[val_idx:]),
-                epochs=epochs)
+    input_shape = X_train.shape[2:]
+    if val_idx is None:
+        val_idx = -(validation_split) * len(X_train)
 
 
+    model = create_siameseNetwork(input_shape)
+    rms = keras.optimizers.RMSprop()
+    model.compile(loss=contrastive_loss, optimizer=rms, metrics=[accuracy])
+    AAA = model.fit([X_train[:val_idx, 0], X_train[:val_idx, 1]], y_train[:val_idx],
+                    batch_size=128,
+                    validation_data=([X_train[val_idx:, 0], X_train[val_idx:, 1]], y_train[val_idx:]),
+                    epochs=epochs)
 
-acc = AAA.history['accuracy']
-val_acc = AAA.history['val_accuracy']
-loss = AAA.history['loss']
-val_loss = AAA.history['val_loss']
-epochs = range(len(acc))
-plt.plot(epochs, acc, '-', color='orange', label='training acc')
-plt.plot(epochs, val_acc, '-', color='blue', label='validation acc')
-plt.title('Training and validation accuracy')
-plt.legend()
-plt.show()
 
-plt.plot(epochs, loss, '-', color='orange', label='training loss')
-plt.plot(epochs, val_loss, '-', color='blue', label='validation loss')
-plt.title('Training and validation error VS time')
-plt.legend()
-plt.show()
 
-eval_table = {}
-y_pred = model.predict([X_train[:val_idx, 0], X_train[:val_idx, 1]])
-train_acc = compute_accuracy(y_train[:val_idx], y_pred)
-eval_table.update({'Train': train_acc})
-eval_table.update(evaluate_accuracy(model, X, range(num_classes), num_test))
-eval_table.update(evaluate_accuracy(model, X, training_digits, num_test))
-eval_table.update(evaluate_accuracy(model, X, training_digits, num_test, test_only_digits))
-eval_table.update(evaluate_accuracy(model, X, test_only_digits, num_test))
-import pandas as pd
-print(pd.DataFrame([eval_table]).T)
+    acc = AAA.history['accuracy']
+    val_acc = AAA.history['val_accuracy']
+    loss = AAA.history['loss']
+    val_loss = AAA.history['val_loss']
+    epochs = range(len(acc))
+    plt.plot(epochs, acc, '-', color='orange', label='training acc')
+    plt.plot(epochs, val_acc, '-', color='blue', label='validation acc')
+    plt.title('Training and validation accuracy')
+    plt.legend()
+    plt.show()
+
+    plt.plot(epochs, loss, '-', color='orange', label='training loss')
+    plt.plot(epochs, val_loss, '-', color='blue', label='validation loss')
+    plt.title('Training and validation error VS time')
+    plt.legend()
+    plt.show()
+
+    eval_table = {}
+    y_pred = model.predict([X_train[:val_idx, 0], X_train[:val_idx, 1]])
+    train_acc = compute_accuracy(y_train[:val_idx], y_pred)
+    eval_table.update({'Train': train_acc})
+    eval_table.update(evaluate_accuracy(model, X, range(num_classes), num_test, digits_idx, y))
+    eval_table.update(evaluate_accuracy(model, X, training_digits, num_test, digits_idx, y))
+    eval_table.update(evaluate_accuracy(model, X, training_digits, num_test, digits_idx, y, test_only_digits))
+    eval_table.update(evaluate_accuracy(model, X, test_only_digits, num_test, digits_idx, y))
+
+    print(pd.DataFrame([eval_table]).T)
 
 
 # compute final accuracy on training and test sets
-y_pred = model.predict([X_train[:val_idx, 0], X_train[:val_idx, 1]])
-tr_acc = compute_accuracy(y_train[:val_idx], y_pred)
-y_pred = model.predict([X_train[val_idx:, 0], X_train[val_idx:, 1]])
-te_acc = compute_accuracy(y_train[val_idx:], y_pred)
+    y_pred = model.predict([X_train[:val_idx, 0], X_train[:val_idx, 1]])
+    tr_acc = compute_accuracy(y_train[:val_idx], y_pred)
+    y_pred = model.predict([X_train[val_idx:, 0], X_train[val_idx:, 1]])
+    te_acc = compute_accuracy(y_train[val_idx:], y_pred)
 
-print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
-print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
+    print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
+    print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
     
-evaluation_Statistic_Result(model, X, test_only_digits, num_test)
-evaluation_Statistic_Result(model, X, training_digits, num_test, test_only_digits)
-evaluation_Statistic_Result(model, X, training_digits, num_test)
-evaluation_Statistic_Result(model, X, range(num_classes), num_test)
+    evaluation_Statistic_Result(model, X, test_only_digits, num_test, digits_idx, y)
+    evaluation_Statistic_Result(model, X, training_digits, num_test, digits_idx, y, test_only_digits)
+    evaluation_Statistic_Result(model, X, training_digits, num_test, digits_idx, y)
+    evaluation_Statistic_Result(model, X, range(num_classes), num_test, digits_idx, y)
 
+if __name__ == '__main__':
+    num_classes = 10
+    num_train = 50000
+    num_test = 10000
+    validation_split = 0.1
+    val_idx = -10000
+    epochs = 20
+    normalize = True
+    test_only_digits = [0,1,8,9]
+    training_digits = [cls for cls in range(num_classes) if cls not in test_only_digits]
+    margin = 1
+    threshould = margin/2
+    main(val_idx, epochs)
